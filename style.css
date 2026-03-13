@@ -1,0 +1,280 @@
+/* ======================================
+   薬院習字 — Style (6-Brush System)
+   ====================================== */
+
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+html, body {
+  width: 100%; height: 100dvh; overflow: hidden;
+  touch-action: none; -webkit-touch-callout: none;
+  -webkit-user-select: none; user-select: none;
+  background: #faf8f5; position: fixed; inset: 0;
+}
+
+#washi-bg {
+  position: fixed; inset: 0; z-index: 0;
+  background: url("assets/washi.png") center / cover no-repeat;
+  background-color: #f5f0e8;
+}
+
+#canvas {
+  position: fixed; inset: 0; z-index: 1;
+  width: 100%; height: 100%;
+  touch-action: none; cursor: crosshair;
+}
+
+#transition-overlay {
+  position: fixed; inset: 0; z-index: 10;
+  background: #faf8f5; opacity: 0;
+  pointer-events: none; transition: opacity 0.15s ease-in;
+}
+#transition-overlay.flash { opacity: 1; transition: opacity 0.05s ease-in; }
+#transition-overlay.fade-out { opacity: 0; transition: opacity 0.4s ease-out; }
+
+/* ═══════════════════════════════════
+   Rakkan Stamp
+   ═══════════════════════════════════ */
+#rakkan {
+  position: fixed; z-index: 20;
+  width: 52px; height: 52px; object-fit: contain;
+  pointer-events: auto; bottom: 20px; left: 20px;
+  opacity: 0.55; transform: scale(1);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  padding: 6px; -webkit-tap-highlight-color: transparent;
+}
+#rakkan:active { opacity: 1; transform: scale(0.9); }
+#rakkan.game-active { opacity: 0.9; filter: drop-shadow(0 0 6px rgba(180,60,40,0.5)); }
+
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  #rakkan {
+    bottom: calc(20px + env(safe-area-inset-bottom));
+    left: calc(20px + env(safe-area-inset-left));
+  }
+}
+
+/* ═══════════════════════════════════
+   Brush Change Button (top-right)
+   ═══════════════════════════════════ */
+#brush-change-btn {
+  position: fixed; z-index: 20;
+  top: 16px; right: 16px;
+  width: 44px; height: 44px;
+  border: 1.5px solid rgba(42,37,32,0.25);
+  border-radius: 50%;
+  background: rgba(250,248,245,0.75);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  font-family: "Shippori Mincho", serif;
+  font-size: 1.1rem; font-weight: 700;
+  color: #2a2520; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 0.2s ease, transform 0.15s ease;
+}
+#brush-change-btn:active { transform: scale(0.9); opacity: 0.7; }
+
+@supports (padding-top: env(safe-area-inset-top)) {
+  #brush-change-btn { top: calc(16px + env(safe-area-inset-top)); }
+}
+
+/* ═══════════════════════════════════
+   Brush Selector Panel
+   ═══════════════════════════════════ */
+#brush-panel {
+  position: fixed; inset: 0; z-index: 150;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(250,248,245,0.94);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.35s ease;
+}
+#brush-panel.visible { opacity: 1; pointer-events: auto; }
+
+.brush-panel-inner { text-align: center; width: 90%; max-width: 420px; }
+
+.brush-panel-title {
+  font-family: "Shippori Mincho", serif;
+  font-size: 1.6rem; font-weight: 700;
+  color: #2a2520; letter-spacing: 0.4em;
+  margin-bottom: 2rem;
+}
+
+.brush-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.brush-option {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 4px; padding: 16px 8px;
+  border: 2px solid rgba(42,37,32,0.12);
+  border-radius: 12px;
+  background: rgba(255,255,255,0.5);
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.15s ease;
+  font-family: "Shippori Mincho", serif;
+}
+
+.brush-option:active { transform: scale(0.95); }
+
+.brush-option.active {
+  border-color: #2a2520;
+  background: rgba(42,37,32,0.06);
+}
+
+/* ── Brush stroke previews (CSS-drawn) ── */
+.brush-stroke {
+  display: block;
+  width: 48px; height: 14px;
+  margin: 6px auto;
+  border-radius: 7px;
+  background: #2a2520;
+}
+.stroke-thick {
+  height: 18px; border-radius: 9px;
+  background: #1a1510;
+}
+.stroke-std {
+  height: 10px; border-radius: 5px 2px 5px 2px;
+  background: linear-gradient(90deg, #1a1510 0%, #1a1510 60%, #7a6a5a 100%);
+}
+.stroke-thin {
+  height: 2px; border-radius: 1px;
+  width: 44px;
+  background: #2a2520;
+}
+.stroke-sharp {
+  height: 8px; border-radius: 1px 4px 1px 0;
+  clip-path: polygon(0 30%, 100% 0, 97% 100%, 0 70%);
+  background: #1a1510;
+}
+.stroke-bamboo {
+  height: 14px; border-radius: 2px;
+  background: repeating-linear-gradient(
+    90deg, #1a1510 0px, #1a1510 3px, transparent 3px, transparent 5px
+  );
+}
+.stroke-bounce {
+  height: 10px; border-radius: 5px;
+  background: #2a2520;
+  clip-path: polygon(0 40%, 10% 20%, 25% 60%, 40% 25%, 55% 55%, 70% 30%, 85% 50%, 100% 35%, 100% 80%, 85% 70%, 70% 85%, 55% 65%, 40% 80%, 25% 70%, 10% 85%, 0 60%);
+}
+
+.brush-name {
+  font-size: 0.85rem; font-weight: 700;
+  color: #2a2520; letter-spacing: 0.1em;
+}
+
+.brush-desc {
+  font-size: 0.65rem; font-weight: 400;
+  color: #7a7168; letter-spacing: 0.05em;
+}
+/* CYBER SURVIVOR — Game Mode Styles */
+
+body.game-active #washi-bg { opacity: 0 !important; }
+body.game-active #brush-change-btn { opacity: 0 !important; pointer-events: none !important; }
+body.game-active #brush-panel { display: none !important; }
+body.game-active { background: #0a0a14 !important; }
+body.game-active #canvas { background: #0a0a14 !important; }
+body.game-active #rakkan {
+  filter: brightness(0) invert(1) drop-shadow(0 0 8px rgba(0,212,255,0.6));
+  opacity: 0.7;
+}
+
+#game-result {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(10, 10, 20, 0.95);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  opacity: 0; pointer-events: none; transition: opacity 0.5s ease;
+}
+#game-result.visible { opacity: 1; pointer-events: auto; }
+
+.cyber-result { text-align: center; }
+
+.cyber-title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 3.5rem; font-weight: 900;
+  color: #ff2d95;
+  text-shadow: 0 0 20px rgba(255,45,149,0.6), 0 0 60px rgba(255,45,149,0.3);
+  letter-spacing: 0.15em; line-height: 1.1; margin-bottom: 2rem;
+  animation: cyberPulse 2s ease-in-out infinite;
+}
+
+@keyframes cyberPulse {
+  0%, 100% { text-shadow: 0 0 20px rgba(255,45,149,0.6), 0 0 60px rgba(255,45,149,0.3); }
+  50% { text-shadow: 0 0 30px rgba(255,45,149,0.8), 0 0 80px rgba(255,45,149,0.5), 0 0 120px rgba(255,45,149,0.2); }
+}
+
+.cyber-stats { display: flex; gap: 2rem; justify-content: center; margin-bottom: 1.5rem; }
+.cyber-stat { display: flex; flex-direction: column; align-items: center; }
+.cyber-stat-label {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.7rem; font-weight: 400; color: rgba(0, 212, 255, 0.7);
+  letter-spacing: 0.2em; margin-bottom: 0.3rem;
+}
+.cyber-stat-value {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 2.2rem; font-weight: 700; color: #00d4ff;
+  text-shadow: 0 0 12px rgba(0,212,255,0.5);
+}
+
+.cyber-new {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 1rem; font-weight: 700; color: #ffe100;
+  text-shadow: 0 0 15px rgba(255,225,0,0.5);
+  margin-bottom: 0.5rem; animation: newRec 0.6s ease;
+}
+@keyframes newRec { 0%{transform:scale(0.3);opacity:0} 60%{transform:scale(1.3)} 100%{transform:scale(1);opacity:1} }
+
+.cyber-high {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.75rem; color: rgba(255,255,255,0.5);
+  letter-spacing: 0.1em; margin-bottom: 2rem;
+}
+
+.result-buttons { display: flex; gap: 1rem; justify-content: center; }
+
+.cyber-btn {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.9rem; font-weight: 700; letter-spacing: 0.15em;
+  padding: 0.8rem 2.2rem; border: 2px solid #00d4ff; border-radius: 2px;
+  background: rgba(0, 212, 255, 0.15); color: #00d4ff; cursor: pointer;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  transition: all 0.2s ease;
+  text-shadow: 0 0 8px rgba(0,212,255,0.4);
+  box-shadow: 0 0 15px rgba(0,212,255,0.15), inset 0 0 15px rgba(0,212,255,0.05);
+}
+.cyber-btn:active {
+  transform: scale(0.95);
+  background: rgba(0, 212, 255, 0.3);
+  box-shadow: 0 0 25px rgba(0,212,255,0.3), inset 0 0 20px rgba(0,212,255,0.1);
+}
+.cyber-btn-exit {
+  border-color: rgba(255,255,255,0.2); background: transparent;
+  color: rgba(255,255,255,0.5); text-shadow: none; box-shadow: none;
+}
+.cyber-btn-exit:active { background: rgba(255,255,255,0.05); }
+
+/* ═══════════════════════════════════
+   Onboarding
+   ═══════════════════════════════════ */
+#onboarding {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 2rem;
+  background: rgba(250,248,245,0.85);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  opacity: 0; animation: onboardFadeIn 1.2s 0.5s ease forwards;
+  font-family: "Shippori Mincho", serif;
+  writing-mode: vertical-rl; text-orientation: upright;
+}
+#onboarding p { font-size: 1.6rem; font-weight: 700; color: #2a2520; letter-spacing: 0.5em; line-height: 2; }
+#onboarding .sub { font-size: 0.85rem; font-weight: 400; color: #7a7168; letter-spacing: 0.2em; }
+#onboarding.fade-out { animation: onboardFadeOut 1.5s ease forwards; }
+#onboarding.hidden { display: none; }
+
+@keyframes onboardFadeIn { from{opacity:0} to{opacity:1} }
+@keyframes onboardFadeOut { from{opacity:1} to{opacity:0} }

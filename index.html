@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#faf8f5" />
+    <title>薬院習字</title>
+    <meta name="description" content="6種の筆で書道の表現を楽しむ。書く、捨てる、遊ぶ。" />
+    <link rel="manifest" href="manifest.json" />
+    <link rel="apple-touch-icon" href="assets/rakkan.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Shippori+Mincho:wght@400;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="washi-bg"></div>
+    <canvas id="canvas"></canvas>
+    <div id="transition-overlay"></div>
+
+    <img id="rakkan" src="assets/rakkan.png" alt="薬院" />
+    <button id="brush-change-btn" aria-label="筆を変える">筆</button>
+
+    <!-- ══════ 筆選択 ══════ -->
+    <div id="brush-panel">
+      <div class="brush-panel-inner">
+        <p class="brush-panel-title">筆を選ぶ</p>
+        <div class="brush-grid">
+          <button class="brush-option" data-brush="youmou_thick">
+            <span class="brush-name">羊毛筆（太）</span>
+            <span class="brush-stroke stroke-thick"></span>
+            <span class="brush-desc">ふっくら潤筆</span>
+          </button>
+          <button class="brush-option active" data-brush="youmou_std">
+            <span class="brush-name">羊毛筆</span>
+            <span class="brush-stroke stroke-std"></span>
+            <span class="brush-desc">強弱自在</span>
+          </button>
+          <button class="brush-option" data-brush="chouchouhou">
+            <span class="brush-name">長々鋒</span>
+            <span class="brush-stroke stroke-thin"></span>
+            <span class="brush-desc">繊細な細線</span>
+          </button>
+          <button class="brush-option" data-brush="usagi">
+            <span class="brush-name">兎毛筆</span>
+            <span class="brush-stroke stroke-sharp"></span>
+            <span class="brush-desc">鋭い硬筆</span>
+          </button>
+          <button class="brush-option" data-brush="take">
+            <span class="brush-name">竹筆</span>
+            <span class="brush-stroke stroke-bamboo"></span>
+            <span class="brush-desc">バサバサの線</span>
+          </button>
+          <button class="brush-option" data-brush="keimou">
+            <span class="brush-name">鶏毛筆</span>
+            <span class="brush-stroke stroke-bounce"></span>
+            <span class="brush-desc">ペタペタ質感</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════ CYBER SURVIVOR Result Screen ══════ -->
+    <div id="game-result">
+      <div class="result-inner cyber-result">
+        <p class="cyber-title">GAME<br>OVER</p>
+        <div class="cyber-stats">
+          <div class="cyber-stat">
+            <span class="cyber-stat-label">SCORE</span>
+            <span class="cyber-stat-value" id="result-score">0</span>
+          </div>
+          <div class="cyber-stat">
+            <span class="cyber-stat-label">KILLS</span>
+            <span class="cyber-stat-value" id="result-kills">0</span>
+          </div>
+          <div class="cyber-stat">
+            <span class="cyber-stat-label">WAVE</span>
+            <span class="cyber-stat-value" id="result-wave">1</span>
+          </div>
+        </div>
+        <p class="cyber-new" id="result-new">★ NEW HI-SCORE ★</p>
+        <p class="cyber-high">HI-SCORE: <span id="result-high">0</span></p>
+        <div class="result-buttons">
+          <button id="game-replay" class="cyber-btn">RETRY</button>
+          <button id="game-exit" class="cyber-btn cyber-btn-exit">EXIT</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="onboarding">
+      <p>書く<span class="sub">（一本指）</span></p>
+      <p>捨てる<span class="sub">（二本指）</span></p>
+      <p>遊ぶ<span class="sub">（左下の印）</span></p>
+    </div>
+
+    <script src="brushes.js"></script>
+    <script src="game.js"></script>
+    <script src="app.js"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+      }
+    </script>
+  </body>
+</html>
