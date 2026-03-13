@@ -3,7 +3,7 @@
    Offline-first caching
    ====================================== */
 
-const CACHE_NAME = 'yakuin-shuji-v3';
+const CACHE_NAME = 'yakuin-shuji-v4';
 const ASSETS = [
   '/',
   '/index.html',
@@ -13,7 +13,10 @@ const ASSETS = [
   '/game.js',
   '/manifest.json',
   '/assets/washi.png',
-  '/assets/rakkan.png'
+  '/assets/rakkan.png',
+  '/assets/icon-192.png',
+  '/assets/icon-512.png',
+  '/favicon.ico'
 ];
 
 // Install — cache all assets
