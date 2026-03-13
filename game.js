@@ -12,30 +12,30 @@ const GameEngine = (() => {
   const CFG = {
     // Player
     playerR: 14,
-    playerSpeed: 6,
-    playerMaxHP: 5,
+    playerSpeed: 5,
+    playerMaxHP: 3,
     playerTrailLen: 12,
-    invincibleTime: 1500,
+    invincibleTime: 800,
 
-    // Shooting
-    shootInterval: 180,      // ms auto-fire rate
-    bulletSpeed: 12,
+    // Shooting — slower and weaker to let enemies through
+    shootInterval: 320,      // ms auto-fire rate (was 180)
+    bulletSpeed: 7,
     bulletR: 3,
-    bulletLifetime: 800,
+    bulletLifetime: 600,
 
-    // Enemies
-    spawnInterval: 1200,     // initial ms
-    spawnIntervalMin: 350,
-    maxEnemies: 25,
-    enemyBaseSpeed: 1.2,
+    // Enemies — fast and aggressive
+    spawnInterval: 800,      // initial ms (was 1200)
+    spawnIntervalMin: 200,
+    maxEnemies: 35,
+    enemyBaseSpeed: 2.8,     // much faster (was 1.2)
 
     // Waves
-    waveDuration: 20,        // seconds per wave
-    waveEnemyMult: 1.25,
+    waveDuration: 15,        // seconds per wave (was 20)
+    waveEnemyMult: 1.4,
 
     // Power-ups
-    powerUpChance: 0.15,     // chance per kill
-    powerUpDuration: 6000,
+    powerUpChance: 0.12,
+    powerUpDuration: 5000,
     powerUpR: 12,
 
     // Visuals
@@ -64,9 +64,9 @@ const GameEngine = (() => {
   // Enemy types
   const ENEMY_TYPES = {
     drone:   { r: 10, speed: 1.0, hp: 1, color: NEON.pink,   score: 10, shape: 'diamond' },
-    fast:    { r: 7,  speed: 2.2, hp: 1, color: NEON.green,  score: 15, shape: 'triangle' },
-    tank:    { r: 18, speed: 0.5, hp: 4, color: NEON.orange, score: 30, shape: 'hexagon' },
-    bomber:  { r: 13, speed: 0.8, hp: 2, color: NEON.purple, score: 20, shape: 'square' },
+    fast:    { r: 7,  speed: 2.8, hp: 1, color: NEON.green,  score: 15, shape: 'triangle' },
+    tank:    { r: 18, speed: 0.7, hp: 5, color: NEON.orange, score: 30, shape: 'hexagon' },
+    bomber:  { r: 13, speed: 1.2, hp: 2, color: NEON.purple, score: 20, shape: 'square' },
   };
 
   const POWERUP_TYPES = [
@@ -327,7 +327,7 @@ const GameEngine = (() => {
     }
 
     const type = ENEMY_TYPES[typeKey];
-    const speedMult = 1 + (wave - 1) * 0.1;
+    const speedMult = 1 + (wave - 1) * 0.15;
 
     // Spawn from edges
     const side = Math.floor(Math.random() * 4);

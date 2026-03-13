@@ -3,7 +3,7 @@
    Offline-first caching
    ====================================== */
 
-const CACHE_NAME = 'yakuin-shuji-v4';
+const CACHE_NAME = 'yakuin-shuji-v5';
 const ASSETS = [
   '/',
   '/index.html',

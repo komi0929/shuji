@@ -520,6 +520,8 @@
       drawing = false;
       ptrId = null;
       pts = [];
+      // Start idle hint timer
+      startIdleHintTimer();
     }
   }
 
@@ -638,7 +640,58 @@
     // Show brush panel on first load
     showBrushPanel();
 
+    // ── In-game exit button ──
+    const exitIngame = document.getElementById('game-exit-ingame');
+    if (exitIngame) {
+      exitIngame.addEventListener('pointerdown', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        gameMode = false;
+        if (typeof GameEngine !== 'undefined') GameEngine.stop();
+        document.body.classList.remove('game-active');
+        rakkan.classList.remove('game-active');
+        clear(); ink = INK_MAX; totalDist = 0;
+        showBrushPanel();
+      }, {passive:false});
+    }
+
+    // ── Idle hint (2-finger swipe teaching) ──
+    const idleHint = document.getElementById('idle-hint');
+    const idleHintClose = document.getElementById('idle-hint-close');
+    let idleTimer = null;
+    let hintShown = false;
+
+    function startIdleHintTimer() {
+      if (hintShown || gameMode) return;
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        if (!drawing && !gameMode && idleHint) {
+          idleHint.classList.add('visible');
+          // Force reflow for transition
+          void idleHint.offsetWidth;
+          idleHint.style.opacity = '1';
+          hintShown = true;
+        }
+      }, 3000);
+    }
+    // Expose to onUp
+    window._startIdleHint = startIdleHintTimer;
+
+    if (idleHintClose) {
+      idleHintClose.addEventListener('pointerdown', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        if (idleHint) {
+          idleHint.style.opacity = '0';
+          setTimeout(() => idleHint.classList.remove('visible'), 600);
+        }
+      }, {passive:false});
+    }
+
     handleOnboarding();
+  }
+
+  // Idle hint helper (called from onUp)
+  function startIdleHintTimer() {
+    if (window._startIdleHint) window._startIdleHint();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
