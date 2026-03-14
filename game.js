@@ -93,9 +93,15 @@ const GameEngine = (() => {
   let dashState={active:false,cooldown:0,dir:{x:0,y:0},timer:0,trail:[]};
   let ultCharge=0,ultActive=false,ultTimer=0,ultRing=0;
   let grazeCount=0,grazeFlash=0;
-  let slowMo=1; // 1 = normal, 0.3 = slow
-  let pointerHistory=[]; // for dash detection
-  let gameTime=0; // total game time for effects
+  let slowMo=1;
+  let pointerHistory=[];
+  let gameTime=0;
+  // Bloom post-processing
+  let bloomCanvas=null,bloomCtx=null;
+  // Ambient embers
+  let embers=[];
+  // Speed lines
+  let playerVel={x:0,y:0},prevPlayerPos={x:0,y:0};
 
   // === HELPERS ===
   function rand(a,b){return a+Math.random()*(b-a);}
@@ -105,13 +111,35 @@ const GameEngine = (() => {
   function glow(ctx,color,blur){ctx.shadowColor=color;ctx.shadowBlur=blur;}
   function noGlow(ctx){ctx.shadowColor='transparent';ctx.shadowBlur=0;}
 
-  // === STARS + NEBULA ===
+  // === STARS + NEBULA + EMBERS ===
   let nebulaClouds=[];
-  function initStars(){stars=[];for(let i=0;i<CFG.starCount;i++)stars.push({x:Math.random()*W,y:Math.random()*H,brightness:rand(0.1,0.5),size:rand(0.5,1.8),speed:rand(0.05,0.25),phase:rand(0,Math.PI*2)});
-    nebulaClouds=[];for(let i=0;i<5;i++)nebulaClouds.push({x:rand(0,W),y:rand(0,H),r:rand(80,200),color:['rgba(0,60,120,','rgba(60,0,80,','rgba(0,80,60,','rgba(80,20,60,','rgba(20,40,80,'][i],drift:rand(-0.08,0.08),phase:rand(0,Math.PI*2)});}
+  function initStars(){
+    stars=[];for(let i=0;i<CFG.starCount;i++)stars.push({x:Math.random()*W,y:Math.random()*H,brightness:rand(0.1,0.5),size:rand(0.5,1.8),speed:rand(0.05,0.25),phase:rand(0,Math.PI*2)});
+    nebulaClouds=[];for(let i=0;i<5;i++)nebulaClouds.push({x:rand(0,W),y:rand(0,H),r:rand(80,200),color:['rgba(0,60,120,','rgba(60,0,80,','rgba(0,80,60,','rgba(80,20,60,','rgba(20,40,80,'][i],drift:rand(-0.08,0.08),phase:rand(0,Math.PI*2)});
+    embers=[];for(let i=0;i<25;i++)embers.push({x:rand(0,W),y:rand(0,H),vx:rand(-0.15,0.15),vy:rand(-0.3,-0.05),size:rand(0.8,2.2),alpha:rand(0.1,0.35),phase:rand(0,Math.PI*2),color:['#ff6a00','#ff2d95','#00d4ff','#ffd700','#39ff14'][i%5]});
+    // Init bloom canvas
+    bloomCanvas=document.createElement('canvas');bloomCanvas.width=Math.ceil(W/2);bloomCanvas.height=Math.ceil(H/2);bloomCtx=bloomCanvas.getContext('2d');
+  }
   function updateStars(){for(const s of stars){s.y+=s.speed;if(s.y>H+5){s.y=-5;s.x=Math.random()*W;}}}
+  function updateEmbers(now){for(const e of embers){e.x+=e.vx+Math.sin(now/3000+e.phase)*0.1;e.y+=e.vy;if(e.y<-5){e.y=H+5;e.x=rand(0,W);}if(e.x<-5)e.x=W+5;if(e.x>W+5)e.x=-5;}}
   function drawNebula(ctx,now){for(const c of nebulaClouds){const pulse=0.06+Math.sin(now/5000+c.phase)*0.02;c.x+=c.drift;if(c.x<-c.r)c.x=W+c.r;if(c.x>W+c.r)c.x=-c.r;const gr=ctx.createRadialGradient(c.x,c.y,0,c.x,c.y,c.r);gr.addColorStop(0,c.color+pulse+')');gr.addColorStop(1,c.color+'0)');ctx.globalAlpha=1;ctx.fillStyle=gr;ctx.fillRect(c.x-c.r,c.y-c.r,c.r*2,c.r*2);}}
   function drawStars(ctx,now){for(const s of stars){ctx.globalAlpha=s.brightness*(0.5+Math.sin(now/1000+s.phase)*0.5);ctx.fillStyle=NEON.white;ctx.beginPath();ctx.arc(s.x,s.y,s.size,0,Math.PI*2);ctx.fill();}ctx.globalAlpha=1;}
+  function drawEmbers(ctx,now){for(const e of embers){ctx.globalAlpha=e.alpha*(0.5+Math.sin(now/2000+e.phase)*0.5);glow(ctx,e.color,4);ctx.fillStyle=e.color;ctx.beginPath();ctx.arc(e.x,e.y,e.size,0,Math.PI*2);ctx.fill();}noGlow(ctx);ctx.globalAlpha=1;}
+  // Speed lines
+  function drawSpeedLines(ctx,now){
+    const spd=Math.hypot(playerVel.x,playerVel.y);
+    if(spd<1.5&&!dashState.active)return;
+    const intensity=dashState.active?0.4:Math.min(spd/8,0.25);
+    const count=dashState.active?12:Math.floor(spd*2);
+    ctx.globalAlpha=intensity;
+    for(let i=0;i<count;i++){
+      const a=rand(0,Math.PI*2),r1=rand(W*0.3,W*0.7),r2=r1+rand(20,60);
+      const lx=player.x+Math.cos(a)*r1,ly=player.y+Math.sin(a)*r1;
+      const lx2=player.x+Math.cos(a)*r2,ly2=player.y+Math.sin(a)*r2;
+      ctx.strokeStyle=NEON.blue;ctx.lineWidth=rand(0.5,1.5);
+      ctx.beginPath();ctx.moveTo(lx,ly);ctx.lineTo(lx2,ly2);ctx.stroke();
+    }ctx.globalAlpha=1;
+  }
 
   // === PLAYER ===
   function createPlayer(){return{x:W/2,y:H*0.65,hp:CFG.playerMaxHP,trail:[],invincible:0,alive:true};}
@@ -488,12 +516,25 @@ const GameEngine = (() => {
     if(now<hitstopUntil){animFrame=requestAnimationFrame(gameLoop);return;}
     const rawDt=lastTime?timestamp-lastTime:16;lastTime=timestamp;
     const dt=rawDt*slowMo;
+    // Track player velocity for speed lines
+    if(player){playerVel.x=player.x-prevPlayerPos.x;playerVel.y=player.y-prevPlayerPos.y;prevPlayerPos.x=player.x;prevPlayerPos.y=player.y;}
     updatePlayer(dt);autoShoot(now);updateBullets(now);updateEnemyBullets(now);updateEnemies(dt,now);updateBoss(now);
-    checkCollisions(now);updatePowerUps(now);updateUltimate(rawDt);updateParticles();updateFloatingTexts();updateShake();updateWaves(now,dt);updateStars();updateSpawnFlashes(now);updateWaveBanner(now);
+    checkCollisions(now);updatePowerUps(now);updateUltimate(rawDt);updateParticles();updateFloatingTexts();updateShake();updateWaves(now,dt);updateStars();updateEmbers(now);updateSpawnFlashes(now);updateWaveBanner(now);
     _ctx.save();_ctx.setTransform(1,0,0,1,0,0);const dpr=window.devicePixelRatio||1;_ctx.clearRect(0,0,_canvas.width,_canvas.height);_ctx.fillStyle=NEON.darkBg;_ctx.fillRect(0,0,_canvas.width,_canvas.height);_ctx.restore();
     _ctx.save();_ctx.translate(shake.x,shake.y);
-    drawNebula(_ctx,now);drawStars(_ctx,now);drawGrid(_ctx,now);drawSpawnFlashes(_ctx,now);drawPowerUps(_ctx,now);drawBullets(_ctx);drawEnemyBullets(_ctx);drawEnemies(_ctx,now);drawBoss(_ctx,now);drawPlayer(_ctx,now);drawParticles(_ctx);drawUltimateRing(_ctx,now);drawGrazeFlash(_ctx);drawFloatingTexts(_ctx);drawOffScreenIndicators(_ctx);drawWaveBanner(_ctx,now);drawDamageFlash(_ctx);drawScreenPulse(_ctx);drawEdgeWarnings(_ctx);drawVignette(_ctx);drawScanlines(_ctx);drawHUD(_ctx,now);
+    drawNebula(_ctx,now);drawStars(_ctx,now);drawEmbers(_ctx,now);drawGrid(_ctx,now);drawSpeedLines(_ctx,now);drawSpawnFlashes(_ctx,now);drawPowerUps(_ctx,now);drawBullets(_ctx);drawEnemyBullets(_ctx);drawEnemies(_ctx,now);drawBoss(_ctx,now);drawPlayer(_ctx,now);drawParticles(_ctx);drawUltimateRing(_ctx,now);drawGrazeFlash(_ctx);drawFloatingTexts(_ctx);drawOffScreenIndicators(_ctx);drawWaveBanner(_ctx,now);drawDamageFlash(_ctx);drawScreenPulse(_ctx);drawEdgeWarnings(_ctx);drawVignette(_ctx);drawScanlines(_ctx);drawHUD(_ctx,now);
     _ctx.restore();
+    // === BLOOM POST-PROCESSING ===
+    if(bloomCanvas){
+      bloomCtx.clearRect(0,0,bloomCanvas.width,bloomCanvas.height);
+      bloomCtx.drawImage(_canvas,0,0,bloomCanvas.width,bloomCanvas.height);
+      _ctx.save();_ctx.setTransform(1,0,0,1,0,0);
+      _ctx.globalCompositeOperation='screen';_ctx.globalAlpha=0.35;
+      _ctx.filter='blur(12px)';
+      _ctx.drawImage(bloomCanvas,0,0,_canvas.width,_canvas.height);
+      _ctx.filter='none';_ctx.globalCompositeOperation='source-over';_ctx.globalAlpha=1;
+      _ctx.restore();
+    }
     animFrame=requestAnimationFrame(gameLoop);
   }
 
@@ -517,8 +558,9 @@ const GameEngine = (() => {
     spawnInterval=CFG.spawnInterval;bullets=[];enemies=[];particles=[];powerUps=[];floatingTexts=[];enemyBullets=[];
     activePowers={};shake={x:0,y:0,intensity:0};flashAlpha=0;gridOffset=0;vignetteBoost=0;screenPulse=0;spawnFlashes=[];waveBanner=null;hitstopUntil=0;boss=null;bossLastShot=0;comboTimer=0;
     dashState={active:false,cooldown:0,dir:{x:0,y:0},timer:0,trail:[]};ultCharge=0;ultActive=false;ultTimer=0;ultRing=0;grazeCount=0;grazeFlash=0;slowMo=1;pointerHistory=[];gameTime=0;
-    edgeWarnings={top:0,right:0,bottom:0,left:0};
+    edgeWarnings={top:0,right:0,bottom:0,left:0};playerVel={x:0,y:0};
     player=createPlayer();targetX=player.x;targetY=player.y;touching=false;
+    prevPlayerPos={x:player.x,y:player.y};
     initStars();SFX.startBGM();
     _canvas.addEventListener('pointerdown',onPointerDown,{passive:false});_canvas.addEventListener('pointermove',onPointerMove,{passive:false});_canvas.addEventListener('pointerup',onPointerUp);_canvas.addEventListener('pointercancel',onPointerUp);
     const ro=document.getElementById('game-result');if(ro)ro.classList.remove('visible');
