@@ -488,25 +488,36 @@ const GameEngine = (() => {
   }
 
   // === HUD ===
-  // Safe area detection (iOS notch/Dynamic Island/PWA)
+  // Bulletproof safe area detection (iOS/Android, PWA/browser)
   let safeTop=0,safeBottom=0;
   function detectSafeArea(){
-    // Read CSS custom properties set from env(safe-area-inset-*)
-    const cs=getComputedStyle(document.documentElement);
-    safeTop=parseInt(cs.getPropertyValue('--sat'))||0;
-    safeBottom=parseInt(cs.getPropertyValue('--sab'))||0;
-    // iPhone fallback: if env() returns 0 in standalone PWA, detect by screen
-    if(safeTop<10&&isMobile){
-      const h=screen.height,w=screen.width,r=window.devicePixelRatio||1;
-      const ph=Math.max(h,w)*r;
-      // iPhone with Dynamic Island (14 Pro+, 15, 16): 2556px+
-      if(ph>=2556)safeTop=59;
-      // iPhone with notch (X, 11, 12, 13, 14): 2436-2532px
-      else if(ph>=2436)safeTop=47;
-      // iPhone SE3 or similar
-      else if(ph>=1334)safeTop=20;
-      // Bottom for home indicator
-      safeBottom=Math.max(safeBottom,34);
+    // Method: create a hidden probe element with padding set to env()
+    // getComputedStyle().paddingTop resolves env() to actual pixel values
+    // (CSS custom properties do NOT resolve env() — they return raw tokens)
+    const probe=document.createElement('div');
+    probe.style.cssText='position:fixed;top:0;left:0;width:0;height:0;visibility:hidden;'+
+      'padding-top:env(safe-area-inset-top,0px);'+
+      'padding-bottom:env(safe-area-inset-bottom,0px);';
+    document.body.appendChild(probe);
+    const cs=getComputedStyle(probe);
+    safeTop=parseInt(cs.paddingTop)||0;
+    safeBottom=parseInt(cs.paddingBottom)||0;
+    document.body.removeChild(probe);
+    // Fallback for PWA standalone where env() may return 0
+    if(safeTop<5&&isMobile){
+      const isStandalone=window.matchMedia('(display-mode:standalone)').matches||window.navigator.standalone;
+      if(isStandalone){
+        const h=screen.height,w=screen.width,r=window.devicePixelRatio||1;
+        const ph=Math.max(h,w)*r;
+        if(ph>=2556)safeTop=59;       // Dynamic Island
+        else if(ph>=2436)safeTop=47;  // Notch
+        else if(ph>=1334)safeTop=20;  // Other
+      }
+      // Always ensure home indicator padding on gesture-nav devices
+      if(safeBottom<20){
+        const hasHomeIndicator=screen.height>=812&&window.devicePixelRatio>=2;
+        if(hasHomeIndicator)safeBottom=34;
+      }
     }
   }
   function drawHUD(ctx,now){
