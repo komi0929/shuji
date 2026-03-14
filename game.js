@@ -105,9 +105,12 @@ const GameEngine = (() => {
   function glow(ctx,color,blur){ctx.shadowColor=color;ctx.shadowBlur=blur;}
   function noGlow(ctx){ctx.shadowColor='transparent';ctx.shadowBlur=0;}
 
-  // === STARS ===
-  function initStars(){stars=[];for(let i=0;i<CFG.starCount;i++)stars.push({x:Math.random()*W,y:Math.random()*H,brightness:rand(0.1,0.5),size:rand(0.5,1.8),speed:rand(0.05,0.25),phase:rand(0,Math.PI*2)});}
+  // === STARS + NEBULA ===
+  let nebulaClouds=[];
+  function initStars(){stars=[];for(let i=0;i<CFG.starCount;i++)stars.push({x:Math.random()*W,y:Math.random()*H,brightness:rand(0.1,0.5),size:rand(0.5,1.8),speed:rand(0.05,0.25),phase:rand(0,Math.PI*2)});
+    nebulaClouds=[];for(let i=0;i<5;i++)nebulaClouds.push({x:rand(0,W),y:rand(0,H),r:rand(80,200),color:['rgba(0,60,120,','rgba(60,0,80,','rgba(0,80,60,','rgba(80,20,60,','rgba(20,40,80,'][i],drift:rand(-0.08,0.08),phase:rand(0,Math.PI*2)});}
   function updateStars(){for(const s of stars){s.y+=s.speed;if(s.y>H+5){s.y=-5;s.x=Math.random()*W;}}}
+  function drawNebula(ctx,now){for(const c of nebulaClouds){const pulse=0.06+Math.sin(now/5000+c.phase)*0.02;c.x+=c.drift;if(c.x<-c.r)c.x=W+c.r;if(c.x>W+c.r)c.x=-c.r;const gr=ctx.createRadialGradient(c.x,c.y,0,c.x,c.y,c.r);gr.addColorStop(0,c.color+pulse+')');gr.addColorStop(1,c.color+'0)');ctx.globalAlpha=1;ctx.fillStyle=gr;ctx.fillRect(c.x-c.r,c.y-c.r,c.r*2,c.r*2);}}
   function drawStars(ctx,now){for(const s of stars){ctx.globalAlpha=s.brightness*(0.5+Math.sin(now/1000+s.phase)*0.5);ctx.fillStyle=NEON.white;ctx.beginPath();ctx.arc(s.x,s.y,s.size,0,Math.PI*2);ctx.fill();}ctx.globalAlpha=1;}
 
   // === PLAYER ===
@@ -144,20 +147,38 @@ const GameEngine = (() => {
   }
   function drawPlayer(ctx,now){
     if(!player.alive)return;
-    // Dash afterimages
-    for(const dt of dashState.trail){ctx.globalAlpha=dt.alpha*0.4;glow(ctx,NEON.blue,15);ctx.fillStyle=NEON.blue;ctx.beginPath();ctx.arc(dt.x,dt.y,CFG.playerR*0.8,0,Math.PI*2);ctx.fill();}
+    // Dash afterimages (ship-shaped)
+    for(const dt of dashState.trail){ctx.globalAlpha=dt.alpha*0.3;glow(ctx,NEON.blue,15);ctx.fillStyle=NEON.blue;ctx.save();ctx.translate(dt.x,dt.y);drawShipShape(ctx,CFG.playerR*0.7);ctx.restore();}
     if(player.invincible>0&&!dashState.active&&Math.sin(now/60)>0)return;
-    // Trail
-    for(let i=1;i<player.trail.length;i++){const t=1-i/player.trail.length,p=player.trail[i];ctx.globalAlpha=t*CFG.trailAlpha;glow(ctx,NEON.blue,8*t);ctx.fillStyle=NEON.blue;ctx.beginPath();ctx.arc(p.x,p.y,CFG.playerR*t*0.7,0,Math.PI*2);ctx.fill();}
+    // Engine trail
+    for(let i=1;i<player.trail.length;i++){const t=1-i/player.trail.length,p=player.trail[i];ctx.globalAlpha=t*CFG.trailAlpha*0.6;glow(ctx,NEON.blue,10*t);ctx.fillStyle=NEON.blue;ctx.beginPath();ctx.arc(p.x,p.y,CFG.playerR*t*0.4,0,Math.PI*2);ctx.fill();}
     ctx.globalAlpha=1;const pulse=1+Math.sin(now/150)*0.08,r=CFG.playerR*pulse;
     // Dash streak
     if(dashState.active){glow(ctx,NEON.white,30);ctx.strokeStyle=NEON.white;ctx.lineWidth=3;ctx.globalAlpha=0.6;ctx.beginPath();ctx.moveTo(player.x-dashState.dir.x*40,player.y-dashState.dir.y*40);ctx.lineTo(player.x,player.y);ctx.stroke();}
-    glow(ctx,NEON.blue,25);ctx.fillStyle=NEON.blue;ctx.globalAlpha=1;ctx.beginPath();ctx.arc(player.x,player.y,r,0,Math.PI*2);ctx.fill();
-    noGlow(ctx);ctx.fillStyle=NEON.white;ctx.beginPath();ctx.arc(player.x,player.y,r*0.4,0,Math.PI*2);ctx.fill();
-    if(activePowers.shield){ctx.globalAlpha=0.3+Math.sin(now/200)*0.15;glow(ctx,NEON.blue,15);ctx.strokeStyle=NEON.blue;ctx.lineWidth=2;ctx.beginPath();ctx.arc(player.x,player.y,r+10,0,Math.PI*2);ctx.stroke();noGlow(ctx);}
-    // Dash cooldown indicator
+    // Ship body — arrow/chevron shape
+    ctx.save();ctx.translate(player.x,player.y);
+    // Outer glow hull
+    glow(ctx,NEON.blue,25);ctx.globalAlpha=1;ctx.fillStyle=NEON.blue;
+    drawShipShape(ctx,r);
+    // Inner bright core
+    noGlow(ctx);ctx.fillStyle='rgba(0,212,255,0.4)';drawShipShape(ctx,r*0.65);
+    // Cockpit
+    ctx.fillStyle=NEON.white;ctx.beginPath();ctx.arc(0,-r*0.15,r*0.22,0,Math.PI*2);ctx.fill();
+    // Engine exhaust glow
+    glow(ctx,NEON.blue,15);ctx.globalAlpha=0.5+Math.sin(now/80)*0.3;
+    const exGr=ctx.createRadialGradient(0,r*0.6,0,0,r*0.6,r*0.6);
+    exGr.addColorStop(0,NEON.white);exGr.addColorStop(0.3,NEON.blue);exGr.addColorStop(1,'rgba(0,212,255,0)');
+    ctx.fillStyle=exGr;ctx.fillRect(-r*0.4,r*0.3,r*0.8,r*0.7);
+    ctx.restore();
+    noGlow(ctx);ctx.globalAlpha=1;
+    // Shield
+    if(activePowers.shield){ctx.globalAlpha=0.25+Math.sin(now/200)*0.1;glow(ctx,NEON.blue,15);ctx.strokeStyle=NEON.blue;ctx.lineWidth=2;ctx.beginPath();ctx.arc(player.x,player.y,r+12,0,Math.PI*2);ctx.stroke();noGlow(ctx);}
+    // Dash cooldown
     if(dashState.cooldown>0){const ratio=dashState.cooldown/CFG.dashCooldownTime;ctx.globalAlpha=0.3;ctx.strokeStyle=NEON.white;ctx.lineWidth=2;ctx.beginPath();ctx.arc(player.x,player.y,r+6,-Math.PI/2,-Math.PI/2+Math.PI*2*(1-ratio));ctx.stroke();}
     ctx.globalAlpha=1;noGlow(ctx);
+  }
+  function drawShipShape(ctx,r){
+    ctx.beginPath();ctx.moveTo(0,-r);ctx.lineTo(r*0.65,r*0.7);ctx.lineTo(r*0.2,r*0.4);ctx.lineTo(-r*0.2,r*0.4);ctx.lineTo(-r*0.65,r*0.7);ctx.closePath();ctx.fill();
   }
 
   // === BULLETS ===
@@ -173,7 +194,18 @@ const GameEngine = (() => {
   }
   function fireBullet(angle){bullets.push({x:player.x,y:player.y,vx:Math.cos(angle)*CFG.bulletSpeed,vy:Math.sin(angle)*CFG.bulletSpeed,born:performance.now(),r:CFG.bulletR});}
   function updateBullets(now){for(let i=bullets.length-1;i>=0;i--){const b=bullets[i];b.x+=b.vx;b.y+=b.vy;if(b.x<-20||b.x>W+20||b.y<-20||b.y>H+20||now-b.born>CFG.bulletLifetime)bullets.splice(i,1);}}
-  function drawBullets(ctx){ctx.globalAlpha=1;for(const b of bullets){glow(ctx,NEON.yellow,12);ctx.fillStyle=NEON.yellow;ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,Math.PI*2);ctx.fill();ctx.globalAlpha=0.3;noGlow(ctx);ctx.strokeStyle=NEON.yellow;ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(b.x,b.y);ctx.lineTo(b.x-b.vx*2,b.y-b.vy*2);ctx.stroke();ctx.globalAlpha=1;}noGlow(ctx);}
+  function drawBullets(ctx){
+    for(const b of bullets){
+      // Glow trail (gradient line)
+      const tx=b.x-b.vx*4,ty=b.y-b.vy*4;
+      const trGr=ctx.createLinearGradient(b.x,b.y,tx,ty);
+      trGr.addColorStop(0,'rgba(255,225,0,0.7)');trGr.addColorStop(1,'rgba(255,225,0,0)');
+      ctx.globalAlpha=0.6;ctx.strokeStyle=trGr;ctx.lineWidth=b.r*1.8;ctx.beginPath();ctx.moveTo(b.x,b.y);ctx.lineTo(tx,ty);ctx.stroke();
+      // Bullet core
+      ctx.globalAlpha=1;glow(ctx,NEON.yellow,14);ctx.fillStyle=NEON.yellow;ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,Math.PI*2);ctx.fill();
+      // White hot center
+      noGlow(ctx);ctx.fillStyle=NEON.white;ctx.globalAlpha=0.8;ctx.beginPath();ctx.arc(b.x,b.y,b.r*0.45,0,Math.PI*2);ctx.fill();
+    }ctx.globalAlpha=1;noGlow(ctx);}
 
   // === ENEMY BULLETS ===
   function fireEnemyBullet(x,y,angle,sp){enemyBullets.push({x,y,vx:Math.cos(angle)*(sp||3),vy:Math.sin(angle)*(sp||3),r:4,born:performance.now(),grazed:false});}
@@ -362,7 +394,15 @@ const GameEngine = (() => {
   function addShake(i){shake.intensity=Math.max(shake.intensity,i);}
   function updateShake(){shake.x=(Math.random()-0.5)*shake.intensity;shake.y=(Math.random()-0.5)*shake.intensity;shake.intensity*=CFG.shakeDecay;if(shake.intensity<0.5)shake.intensity=0;}
   function drawGrid(ctx,now){gridOffset=(gridOffset+CFG.gridScroll)%CFG.gridSpacing;ctx.globalAlpha=1;for(let x=-CFG.gridSpacing+gridOffset;x<W+CFG.gridSpacing;x+=CFG.gridSpacing){ctx.strokeStyle=Math.abs(x-W/2)<CFG.gridSpacing?NEON.gridBright:NEON.gridLine;ctx.lineWidth=0.5;ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}for(let y=-CFG.gridSpacing+gridOffset;y<H+CFG.gridSpacing;y+=CFG.gridSpacing){ctx.strokeStyle=Math.abs(y-H/2)<CFG.gridSpacing?NEON.gridBright:NEON.gridLine;ctx.lineWidth=0.5;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}}
-  function drawDamageFlash(ctx){if(flashAlpha>0){ctx.globalAlpha=flashAlpha;ctx.fillStyle='#ff0000';ctx.fillRect(0,0,W,H);flashAlpha*=0.92;if(flashAlpha<0.01)flashAlpha=0;}}
+  function drawDamageFlash(ctx){
+    if(flashAlpha<=0)return;
+    // Red flash
+    ctx.globalAlpha=flashAlpha*0.6;ctx.fillStyle='#ff0000';ctx.fillRect(0,0,W,H);
+    // Chromatic aberration (RGB channel split)
+    if(flashAlpha>0.15){const shift=Math.floor(flashAlpha*6);
+      ctx.globalAlpha=flashAlpha*0.3;ctx.globalCompositeOperation='screen';
+      ctx.drawImage(_canvas,-shift,-shift);ctx.globalCompositeOperation='source-over';}
+    flashAlpha*=0.90;if(flashAlpha<0.01)flashAlpha=0;}
   function drawScanlines(ctx){ctx.globalAlpha=0.04;ctx.fillStyle='#000';for(let y=0;y<H;y+=3)ctx.fillRect(0,y,W,1);ctx.globalAlpha=1;}
   function drawVignette(ctx){const a=0.35+vignetteBoost,gr=ctx.createRadialGradient(W/2,H/2,W*0.25,W/2,H/2,W*0.75);gr.addColorStop(0,'rgba(0,0,0,0)');gr.addColorStop(1,`rgba(0,0,0,${a})`);ctx.globalAlpha=1;ctx.fillStyle=gr;ctx.fillRect(0,0,W,H);if(vignetteBoost>0){vignetteBoost*=0.95;if(vignetteBoost<0.01)vignetteBoost=0;}}
   function drawScreenPulse(ctx){if(screenPulse>0){ctx.globalAlpha=screenPulse;ctx.fillStyle=NEON.white;ctx.fillRect(0,0,W,H);screenPulse*=0.88;if(screenPulse<0.01)screenPulse=0;}}
@@ -452,7 +492,7 @@ const GameEngine = (() => {
     checkCollisions(now);updatePowerUps(now);updateUltimate(rawDt);updateParticles();updateFloatingTexts();updateShake();updateWaves(now,dt);updateStars();updateSpawnFlashes(now);updateWaveBanner(now);
     _ctx.save();_ctx.setTransform(1,0,0,1,0,0);const dpr=window.devicePixelRatio||1;_ctx.clearRect(0,0,_canvas.width,_canvas.height);_ctx.fillStyle=NEON.darkBg;_ctx.fillRect(0,0,_canvas.width,_canvas.height);_ctx.restore();
     _ctx.save();_ctx.translate(shake.x,shake.y);
-    drawStars(_ctx,now);drawGrid(_ctx,now);drawSpawnFlashes(_ctx,now);drawPowerUps(_ctx,now);drawBullets(_ctx);drawEnemyBullets(_ctx);drawEnemies(_ctx,now);drawBoss(_ctx,now);drawPlayer(_ctx,now);drawParticles(_ctx);drawUltimateRing(_ctx,now);drawGrazeFlash(_ctx);drawFloatingTexts(_ctx);drawOffScreenIndicators(_ctx);drawWaveBanner(_ctx,now);drawDamageFlash(_ctx);drawScreenPulse(_ctx);drawEdgeWarnings(_ctx);drawVignette(_ctx);drawScanlines(_ctx);drawHUD(_ctx,now);
+    drawNebula(_ctx,now);drawStars(_ctx,now);drawGrid(_ctx,now);drawSpawnFlashes(_ctx,now);drawPowerUps(_ctx,now);drawBullets(_ctx);drawEnemyBullets(_ctx);drawEnemies(_ctx,now);drawBoss(_ctx,now);drawPlayer(_ctx,now);drawParticles(_ctx);drawUltimateRing(_ctx,now);drawGrazeFlash(_ctx);drawFloatingTexts(_ctx);drawOffScreenIndicators(_ctx);drawWaveBanner(_ctx,now);drawDamageFlash(_ctx);drawScreenPulse(_ctx);drawEdgeWarnings(_ctx);drawVignette(_ctx);drawScanlines(_ctx);drawHUD(_ctx,now);
     _ctx.restore();
     animFrame=requestAnimationFrame(gameLoop);
   }
