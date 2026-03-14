@@ -321,6 +321,7 @@ body.game-active .game-exit-btn { display: flex; align-items: center; justify-co
 body.game-active #brush-change-btn { display: none !important; }
 body.game-active #washi-bg { opacity: 0; }
 body.game-active #idle-hint { display: none !important; }
+body.game-active #rakkan { opacity: 0 !important; pointer-events: none !important; transform: scale(0.5) !important; }
 
 /* ═══════════════════════════════════
    Idle Hint — 白紙に戻す操作ヒント
