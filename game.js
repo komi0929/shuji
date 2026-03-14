@@ -104,13 +104,30 @@ const GameEngine = (() => {
   let playerVel={x:0,y:0},prevPlayerPos={x:0,y:0};
   // Death rings
   let deathRings=[];
+  // === ADAPTIVE QUALITY ===
+  const isMobile='ontouchstart' in window||navigator.maxTouchPoints>0;
+  let quality='HIGH'; // HIGH, MEDIUM, LOW
+  let fpsHistory=[],bloomFrame=0;
+  function detectQuality(rawDt){
+    fpsHistory.push(1000/Math.max(rawDt,1));if(fpsHistory.length>30)fpsHistory.shift();
+    if(fpsHistory.length<20)return;
+    const avg=fpsHistory.reduce((a,b)=>a+b,0)/fpsHistory.length;
+    if(avg<30&&quality!=='LOW'){quality='LOW';}
+    else if(avg<45&&quality==='HIGH'){quality='MEDIUM';}
+    else if(avg>55&&quality==='LOW'){quality='MEDIUM';}
+    else if(avg>58&&quality==='MEDIUM'){quality='HIGH';}
+  }
+  function glowM(ctx,color,blur){
+    const b=quality==='LOW'?Math.min(blur,4):quality==='MEDIUM'?Math.min(blur,10):blur;
+    ctx.shadowColor=color;ctx.shadowBlur=b;
+  }
 
   // === HELPERS ===
   function rand(a,b){return a+Math.random()*(b-a);}
   function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
   function clamp(v,lo,hi){return v<lo?lo:v>hi?hi:v;}
   function lerp(a,b,t){return a+(b-a)*t;}
-  function glow(ctx,color,blur){ctx.shadowColor=color;ctx.shadowBlur=blur;}
+  function glow(ctx,color,blur){glowM(ctx,color,blur);}
   function noGlow(ctx){ctx.shadowColor='transparent';ctx.shadowBlur=0;}
 
   // === STARS + NEBULA + EMBERS ===
@@ -118,9 +135,11 @@ const GameEngine = (() => {
   function initStars(){
     stars=[];for(let i=0;i<CFG.starCount;i++)stars.push({x:Math.random()*W,y:Math.random()*H,brightness:rand(0.1,0.5),size:rand(0.5,1.8),speed:rand(0.05,0.25),phase:rand(0,Math.PI*2)});
     nebulaClouds=[];for(let i=0;i<5;i++)nebulaClouds.push({x:rand(0,W),y:rand(0,H),r:rand(80,200),color:['rgba(0,60,120,','rgba(60,0,80,','rgba(0,80,60,','rgba(80,20,60,','rgba(20,40,80,'][i],drift:rand(-0.08,0.08),phase:rand(0,Math.PI*2)});
-    embers=[];for(let i=0;i<25;i++)embers.push({x:rand(0,W),y:rand(0,H),vx:rand(-0.15,0.15),vy:rand(-0.3,-0.05),size:rand(0.8,2.2),alpha:rand(0.1,0.35),phase:rand(0,Math.PI*2),color:['#ff6a00','#ff2d95','#00d4ff','#ffd700','#39ff14'][i%5]});
-    // Init bloom canvas
-    bloomCanvas=document.createElement('canvas');bloomCanvas.width=Math.ceil(W/2);bloomCanvas.height=Math.ceil(H/2);bloomCtx=bloomCanvas.getContext('2d');
+    const emberCount=isMobile?12:25;
+    embers=[];for(let i=0;i<emberCount;i++)embers.push({x:rand(0,W),y:rand(0,H),vx:rand(-0.15,0.15),vy:rand(-0.3,-0.05),size:rand(0.8,2.2),alpha:rand(0.1,0.35),phase:rand(0,Math.PI*2),color:['#ff6a00','#ff2d95','#00d4ff','#ffd700','#39ff14'][i%5]});
+    // Init bloom canvas (1/3 res on mobile, 1/2 on desktop)
+    const bloomDiv=isMobile?3:2;
+    bloomCanvas=document.createElement('canvas');bloomCanvas.width=Math.ceil(W/bloomDiv);bloomCanvas.height=Math.ceil(H/bloomDiv);bloomCtx=bloomCanvas.getContext('2d');
   }
   function updateStars(){for(const s of stars){s.y+=s.speed;if(s.y>H+5){s.y=-5;s.x=Math.random()*W;}}}
   function updateEmbers(now){for(const e of embers){e.x+=e.vx+Math.sin(now/3000+e.phase)*0.1;e.y+=e.vy;if(e.y<-5){e.y=H+5;e.x=rand(0,W);}if(e.x<-5)e.x=W+5;if(e.x>W+5)e.x=-5;}}
@@ -409,7 +428,7 @@ const GameEngine = (() => {
   function spawnExplosion(x,y,color,count){for(let i=0;i<count;i++){const a=(Math.PI*2/count)*i+rand(-0.3,0.3),s=rand(2,6);particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,r:rand(1.5,4),color,alpha:1,life:1,decay:rand(0.015,0.035)});}}
   function spawnHitSparks(x,y,color,count){for(let i=0;i<count;i++){const a=rand(0,Math.PI*2),s=rand(1,4);particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,r:rand(1,2.5),color,alpha:0.8,life:1,decay:rand(0.03,0.06)});}}
   function spawnShockwave(x,y){for(let i=0;i<36;i++){const a=(Math.PI*2/36)*i,s=rand(4,9);particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,r:rand(2,5),color:NEON.blue,alpha:1,life:1,decay:rand(0.008,0.018)});}for(let i=0;i<12;i++){const a=rand(0,Math.PI*2);particles.push({x,y,vx:Math.cos(a)*rand(1,3),vy:Math.sin(a)*rand(1,3),r:rand(3,6),color:NEON.white,alpha:1,life:1,decay:rand(0.01,0.025)});}}
-  function updateParticles(){for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vx*=0.96;p.vy*=0.96;p.life-=p.decay;p.alpha=p.life;if(p.life<=0)particles.splice(i,1);}}
+  function updateParticles(){if(particles.length>150)particles.splice(0,particles.length-150);for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vx*=0.96;p.vy*=0.96;p.life-=p.decay;p.alpha=p.life;if(p.life<=0)particles.splice(i,1);}}
   function drawParticles(ctx){for(const p of particles){ctx.globalAlpha=p.alpha;glow(ctx,p.color,6);ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.r*p.life,0,Math.PI*2);ctx.fill();}noGlow(ctx);}
   function updateSpawnFlashes(now){for(let i=spawnFlashes.length-1;i>=0;i--){if(now-spawnFlashes[i].time>400)spawnFlashes.splice(i,1);}}
   function drawSpawnFlashes(ctx,now){for(const sf of spawnFlashes){const age=(now-sf.time)/400;if(age>1)continue;const r=sf.r+age*40;ctx.globalAlpha=(1-age)*0.5;ctx.strokeStyle=sf.color;ctx.lineWidth=2*(1-age);glow(ctx,sf.color,10);ctx.beginPath();ctx.arc(sf.x,sf.y,r,0,Math.PI*2);ctx.stroke();}noGlow(ctx);ctx.globalAlpha=1;}
@@ -551,21 +570,31 @@ const GameEngine = (() => {
     if(now<hitstopUntil){animFrame=requestAnimationFrame(gameLoop);return;}
     const rawDt=lastTime?timestamp-lastTime:16;lastTime=timestamp;
     const dt=rawDt*slowMo;
+    detectQuality(rawDt);
     // Track player velocity for speed lines
     if(player){playerVel.x=player.x-prevPlayerPos.x;playerVel.y=player.y-prevPlayerPos.y;prevPlayerPos.x=player.x;prevPlayerPos.y=player.y;}
     updatePlayer(dt);autoShoot(now);updateBullets(now);updateEnemyBullets(now);updateEnemies(dt,now);updateBoss(now);
-    checkCollisions(now);updatePowerUps(now);updateUltimate(rawDt);updateParticles();updateDeathRings();updateFloatingTexts();updateShake();updateWaves(now,dt);updateStars();updateEmbers(now);updateSpawnFlashes(now);updateWaveBanner(now);
+    checkCollisions(now);updatePowerUps(now);updateUltimate(rawDt);updateParticles();updateDeathRings();updateFloatingTexts();updateShake();updateWaves(now,dt);updateStars();
+    if(quality!=='LOW')updateEmbers(now);
+    updateSpawnFlashes(now);updateWaveBanner(now);
     _ctx.save();_ctx.setTransform(1,0,0,1,0,0);const dpr=window.devicePixelRatio||1;_ctx.clearRect(0,0,_canvas.width,_canvas.height);_ctx.fillStyle=NEON.darkBg;_ctx.fillRect(0,0,_canvas.width,_canvas.height);_ctx.restore();
     _ctx.save();_ctx.translate(shake.x,shake.y);
-    drawNebula(_ctx,now);drawStars(_ctx,now);drawEmbers(_ctx,now);drawGrid(_ctx,now);drawSpeedLines(_ctx,now);drawSpawnFlashes(_ctx,now);drawPowerUps(_ctx,now);drawBullets(_ctx);drawEnemyBullets(_ctx);drawEnemies(_ctx,now);drawBoss(_ctx,now);drawPlayer(_ctx,now);drawParticles(_ctx);drawDeathRings(_ctx);drawUltimateRing(_ctx,now);drawGrazeFlash(_ctx);drawFloatingTexts(_ctx);drawOffScreenIndicators(_ctx);drawWaveBanner(_ctx,now);drawComboTint(_ctx);drawDamageFlash(_ctx);drawScreenPulse(_ctx);drawEdgeWarnings(_ctx);drawVignette(_ctx);drawScanlines(_ctx);drawHUD(_ctx,now);
+    drawNebula(_ctx,now);drawStars(_ctx,now);
+    if(quality!=='LOW')drawEmbers(_ctx,now);
+    drawGrid(_ctx,now);
+    if(quality!=='LOW')drawSpeedLines(_ctx,now);
+    drawSpawnFlashes(_ctx,now);drawPowerUps(_ctx,now);drawBullets(_ctx);drawEnemyBullets(_ctx);drawEnemies(_ctx,now);drawBoss(_ctx,now);drawPlayer(_ctx,now);drawParticles(_ctx);drawDeathRings(_ctx);drawUltimateRing(_ctx,now);drawGrazeFlash(_ctx);drawFloatingTexts(_ctx);drawOffScreenIndicators(_ctx);drawWaveBanner(_ctx,now);drawComboTint(_ctx);drawDamageFlash(_ctx);drawScreenPulse(_ctx);drawEdgeWarnings(_ctx);drawVignette(_ctx);drawScanlines(_ctx);drawHUD(_ctx,now);
     _ctx.restore();
-    // === BLOOM POST-PROCESSING ===
-    if(bloomCanvas){
+    // === BLOOM POST-PROCESSING (adaptive) ===
+    bloomFrame++;
+    const doBloom=quality==='HIGH'||(quality==='MEDIUM'&&bloomFrame%2===0);
+    if(bloomCanvas&&doBloom&&quality!=='LOW'){
       bloomCtx.clearRect(0,0,bloomCanvas.width,bloomCanvas.height);
       bloomCtx.drawImage(_canvas,0,0,bloomCanvas.width,bloomCanvas.height);
       _ctx.save();_ctx.setTransform(1,0,0,1,0,0);
-      _ctx.globalCompositeOperation='screen';_ctx.globalAlpha=0.35;
-      _ctx.filter='blur(12px)';
+      _ctx.globalCompositeOperation='screen';
+      _ctx.globalAlpha=quality==='MEDIUM'?0.25:0.35;
+      _ctx.filter=quality==='MEDIUM'?'blur(8px)':'blur(12px)';
       _ctx.drawImage(bloomCanvas,0,0,_canvas.width,_canvas.height);
       _ctx.filter='none';_ctx.globalCompositeOperation='source-over';_ctx.globalAlpha=1;
       _ctx.restore();
