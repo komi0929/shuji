@@ -18,19 +18,19 @@ const GameEngine = (() => {
     invincibleTime: 800,
 
     // Shooting — slower and weaker to let enemies through
-    shootInterval: 320,      // ms auto-fire rate (was 180)
+    shootInterval: 320,      // ms auto-fire rate
     bulletSpeed: 7,
     bulletR: 3,
     bulletLifetime: 600,
 
     // Enemies — fast and aggressive
-    spawnInterval: 800,      // initial ms (was 1200)
+    spawnInterval: 800,      // initial ms
     spawnIntervalMin: 200,
     maxEnemies: 35,
-    enemyBaseSpeed: 2.8,     // much faster (was 1.2)
+    enemyBaseSpeed: 2.8,
 
     // Waves
-    waveDuration: 15,        // seconds per wave (was 20)
+    waveDuration: 15,        // seconds per wave
     waveEnemyMult: 1.4,
 
     // Power-ups
@@ -43,6 +43,7 @@ const GameEngine = (() => {
     gridScroll: 0.3,
     shakeDecay: 0.88,
     trailAlpha: 0.4,
+    starCount: 60,
   };
 
   // ═══════════════════════════════════════
@@ -75,6 +76,215 @@ const GameEngine = (() => {
     { type: 'multishot', color: NEON.pink,    label: 'MULTI-SHOT', icon: '✦' },
     { type: 'heal',      color: NEON.yellow,  label: '+HP',        icon: '♥' },
   ];
+
+  // ═══════════════════════════════════════
+  //   WEB AUDIO — PROCEDURAL SFX
+  // ═══════════════════════════════════════
+  const SFX = (() => {
+    let actx = null;
+    let master = null;
+    let bgmNodes = null;
+
+    function ensure() {
+      if (actx) return true;
+      try {
+        actx = new (window.AudioContext || window.webkitAudioContext)();
+        master = actx.createGain();
+        master.gain.value = 0.25;
+        master.connect(actx.destination);
+        return true;
+      } catch (e) { return false; }
+    }
+
+    // Helper: create a gain node connected to master
+    function g(vol) {
+      const gn = actx.createGain();
+      gn.gain.value = vol;
+      gn.connect(master);
+      return gn;
+    }
+
+    // ── Shoot: short sine chirp ──
+    function shoot() {
+      if (!ensure()) return;
+      const t = actx.currentTime;
+      const osc = actx.createOscillator();
+      const gn = g(0.10);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, t);
+      osc.frequency.exponentialRampToValueAtTime(440, t + 0.05);
+      gn.gain.setValueAtTime(0.10, t);
+      gn.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+      osc.connect(gn);
+      osc.start(t);
+      osc.stop(t + 0.07);
+    }
+
+    // ── Hit: white noise pop ──
+    function hit() {
+      if (!ensure()) return;
+      const t = actx.currentTime;
+      const buf = actx.createBuffer(1, actx.sampleRate * 0.03, actx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * 0.4;
+      const src = actx.createBufferSource();
+      src.buffer = buf;
+      const gn = g(0.08);
+      src.connect(gn);
+      gn.gain.setValueAtTime(0.08, t);
+      gn.gain.exponentialRampToValueAtTime(0.001, t + 0.03);
+      src.start(t);
+    }
+
+    // ── Enemy Kill: filtered noise explosion ──
+    function kill() {
+      if (!ensure()) return;
+      const t = actx.currentTime;
+      const dur = 0.15;
+      const buf = actx.createBuffer(1, actx.sampleRate * dur, actx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1);
+      const src = actx.createBufferSource();
+      src.buffer = buf;
+      const filter = actx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(2000, t);
+      filter.frequency.exponentialRampToValueAtTime(200, t + dur);
+      const gn = g(0.15);
+      src.connect(filter);
+      filter.connect(gn);
+      gn.gain.setValueAtTime(0.15, t);
+      gn.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      src.start(t);
+    }
+
+    // ── Player Damage: low sawtooth buzz ──
+    function damage() {
+      if (!ensure()) return;
+      const t = actx.currentTime;
+      const osc = actx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(80, t);
+      osc.frequency.exponentialRampToValueAtTime(40, t + 0.2);
+      const gn = g(0.18);
+      gn.gain.setValueAtTime(0.18, t);
+      gn.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+      osc.connect(gn);
+      osc.start(t);
+      osc.stop(t + 0.25);
+    }
+
+    // ── Power-up Collect: rising 3-note arpeggio ──
+    function powerUp() {
+      if (!ensure()) return;
+      const t = actx.currentTime;
+      const notes = [523, 659, 784];  // C5, E5, G5
+      notes.forEach((freq, i) => {
+        const osc = actx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        const gn = g(0.12);
+        const start = t + i * 0.07;
+        gn.gain.setValueAtTime(0.001, start);
+        gn.gain.linearRampToValueAtTime(0.12, start + 0.02);
+        gn.gain.exponentialRampToValueAtTime(0.001, start + 0.12);
+        osc.connect(gn);
+        osc.start(start);
+        osc.stop(start + 0.13);
+      });
+    }
+
+    // ── Wave Start: alarm sweep ──
+    function waveStart() {
+      if (!ensure()) return;
+      const t = actx.currentTime;
+      const osc = actx.createOscillator();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(300, t);
+      osc.frequency.exponentialRampToValueAtTime(600, t + 0.2);
+      osc.frequency.exponentialRampToValueAtTime(300, t + 0.4);
+      const gn = g(0.08);
+      gn.gain.setValueAtTime(0.08, t);
+      gn.gain.setValueAtTime(0.08, t + 0.3);
+      gn.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+      osc.connect(gn);
+      osc.start(t);
+      osc.stop(t + 0.5);
+    }
+
+    // ── Game Over: descending tritone ──
+    function gameOver() {
+      if (!ensure()) return;
+      const t = actx.currentTime;
+      [440, 311].forEach((freq, i) => {
+        const osc = actx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(freq, t + i * 0.25);
+        osc.frequency.exponentialRampToValueAtTime(freq * 0.5, t + i * 0.25 + 0.4);
+        const gn = g(0.15);
+        gn.gain.setValueAtTime(0.001, t + i * 0.25);
+        gn.gain.linearRampToValueAtTime(0.15, t + i * 0.25 + 0.05);
+        gn.gain.exponentialRampToValueAtTime(0.001, t + i * 0.25 + 0.5);
+        osc.connect(gn);
+        osc.start(t + i * 0.25);
+        osc.stop(t + i * 0.25 + 0.55);
+      });
+    }
+
+    // ── Combo blip: pitch scales with count ──
+    function comboBlip(count) {
+      if (!ensure()) return;
+      const t = actx.currentTime;
+      const freq = 600 + Math.min(count, 10) * 80;
+      const osc = actx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      const gn = g(0.07);
+      gn.gain.setValueAtTime(0.07, t);
+      gn.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+      osc.connect(gn);
+      osc.start(t);
+      osc.stop(t + 0.09);
+    }
+
+    // ── BGM: subtle bass drone with LFO ──
+    function startBGM() {
+      if (!ensure()) return;
+      if (bgmNodes) stopBGM();
+      const osc = actx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = 55; // A1
+      const lfo = actx.createOscillator();
+      lfo.type = 'sine';
+      lfo.frequency.value = 0.3;
+      const lfoGain = actx.createGain();
+      lfoGain.gain.value = 8;
+      lfo.connect(lfoGain);
+      lfoGain.connect(osc.frequency);
+      const gn = actx.createGain();
+      gn.gain.value = 0.06;
+      gn.connect(master);
+      osc.connect(gn);
+      osc.start();
+      lfo.start();
+      bgmNodes = { osc, lfo, gain: gn };
+    }
+
+    function stopBGM() {
+      if (!bgmNodes) return;
+      try {
+        bgmNodes.gain.gain.setValueAtTime(bgmNodes.gain.gain.value, actx.currentTime);
+        bgmNodes.gain.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 0.5);
+        const nodes = bgmNodes;
+        setTimeout(() => {
+          try { nodes.osc.stop(); nodes.lfo.stop(); } catch(e) {}
+        }, 600);
+      } catch(e) {}
+      bgmNodes = null;
+    }
+
+    return { shoot, hit, kill, damage, powerUp, waveStart, gameOver, comboBlip, startBGM, stopBGM };
+  })();
 
   // ═══════════════════════════════════════
   //   STATE
@@ -119,6 +329,21 @@ const GameEngine = (() => {
   // Active power-ups
   let activePowers = {};
 
+  // Star field
+  let stars = [];
+
+  // Wave banner
+  let waveBanner = null;  // { text, sub, time, duration }
+
+  // Vignette intensity (increases on damage)
+  let vignetteBoost = 0;
+
+  // Screen pulse (bright flash on high combos)
+  let screenPulse = 0;
+
+  // Spawn flash rings
+  let spawnFlashes = [];
+
   // UI elements
   let gameUI, hpBar, scoreEl, waveEl, comboEl, resultOverlay;
 
@@ -137,6 +362,45 @@ const GameEngine = (() => {
   function noGlow(ctx) {
     ctx.shadowColor = 'transparent';
     ctx.shadowBlur = 0;
+  }
+
+  // ═══════════════════════════════════════
+  //   STAR FIELD
+  // ═══════════════════════════════════════
+  function initStars() {
+    stars = [];
+    for (let i = 0; i < CFG.starCount; i++) {
+      stars.push({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        brightness: rand(0.1, 0.5),
+        size: rand(0.5, 1.8),
+        speed: rand(0.05, 0.25),
+        twinklePhase: rand(0, Math.PI * 2),
+      });
+    }
+  }
+
+  function updateStars() {
+    for (const s of stars) {
+      s.y += s.speed;
+      if (s.y > H + 5) {
+        s.y = -5;
+        s.x = Math.random() * W;
+      }
+    }
+  }
+
+  function drawStars(ctx, now) {
+    for (const s of stars) {
+      const twinkle = 0.5 + Math.sin(now / 1000 + s.twinklePhase) * 0.5;
+      ctx.globalAlpha = s.brightness * twinkle;
+      ctx.fillStyle = NEON.white;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
   }
 
   // ═══════════════════════════════════════
@@ -253,6 +517,7 @@ const GameEngine = (() => {
 
     // Main bullet
     fireBullet(angle);
+    SFX.shoot();
 
     // Multi-shot: fire 2 extra at ±15°
     if (activePowers.multishot) {
@@ -338,6 +603,9 @@ const GameEngine = (() => {
       case 2: x = rand(0, W); y = H + 30; break;         // bottom
       case 3: x = -30; y = rand(0, H); break;             // left
     }
+
+    // Spawn flash effect
+    spawnFlashes.push({ x, y, time: performance.now(), color: type.color, r: type.r });
 
     enemies.push({
       x, y,
@@ -451,6 +719,7 @@ const GameEngine = (() => {
           bullets.splice(bi, 1);
           e.hp--;
           spawnHitSparks(b.x, b.y, e.color, 4);
+          SFX.hit();
 
           if (e.hp <= 0) {
             killEnemy(ei, e, now);
@@ -475,13 +744,18 @@ const GameEngine = (() => {
             player.invincible = CFG.invincibleTime;
             addShake(10);
             flashAlpha = 0.4;
+            vignetteBoost = 0.5;
             spawnExplosion(player.x, player.y, NEON.blue, 8);
             enemies.splice(ei, 1);
+            SFX.damage();
 
             if (player.hp <= 0) {
               player.alive = false;
               spawnExplosion(player.x, player.y, NEON.blue, 30);
+              // Death shockwave particles
+              spawnShockwave(player.x, player.y);
               addShake(20);
+              SFX.gameOver();
               setTimeout(endGame, 1200);
             }
           }
@@ -503,6 +777,7 @@ const GameEngine = (() => {
   function killEnemy(index, enemy, now) {
     spawnExplosion(enemy.x, enemy.y, enemy.color, 12);
     addShake(4);
+    SFX.kill();
 
     // Combo
     if (now - lastKillTime < 2000) {
@@ -520,6 +795,9 @@ const GameEngine = (() => {
     addFloatingText(enemy.x, enemy.y - 15, `+${pts}`, NEON.white);
     if (combo > 1) {
       addFloatingText(enemy.x, enemy.y + 5, `${combo}x COMBO`, NEON.yellow);
+      SFX.comboBlip(combo);
+      if (combo >= 3) screenPulse = 0.15;
+      if (combo >= 5) screenPulse = 0.25;
     }
 
     enemies.splice(index, 1);
@@ -551,6 +829,7 @@ const GameEngine = (() => {
     }
     addFloatingText(pu.x, pu.y - 20, pu.label, pu.color);
     spawnExplosion(pu.x, pu.y, pu.color, 8);
+    SFX.powerUp();
   }
 
   function updatePowerUps(now) {
@@ -627,6 +906,39 @@ const GameEngine = (() => {
     }
   }
 
+  // Death shockwave: ring of particles expanding outward
+  function spawnShockwave(x, y) {
+    const count = 36;
+    for (let i = 0; i < count; i++) {
+      const angle = (Math.PI * 2 / count) * i;
+      const speed = rand(4, 9);
+      particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        r: rand(2, 5),
+        color: NEON.blue,
+        alpha: 1,
+        life: 1,
+        decay: rand(0.008, 0.018),
+      });
+    }
+    // Inner white core
+    for (let i = 0; i < 12; i++) {
+      const angle = rand(0, Math.PI * 2);
+      particles.push({
+        x, y,
+        vx: Math.cos(angle) * rand(1, 3),
+        vy: Math.sin(angle) * rand(1, 3),
+        r: rand(3, 6),
+        color: NEON.white,
+        alpha: 1,
+        life: 1,
+        decay: rand(0.01, 0.025),
+      });
+    }
+  }
+
   function updateParticles() {
     for (let i = particles.length - 1; i >= 0; i--) {
       const p = particles[i];
@@ -650,6 +962,32 @@ const GameEngine = (() => {
       ctx.fill();
     }
     noGlow(ctx);
+  }
+
+  // ═══════════════════════════════════════
+  //   SPAWN FLASH RINGS
+  // ═══════════════════════════════════════
+  function updateSpawnFlashes(now) {
+    for (let i = spawnFlashes.length - 1; i >= 0; i--) {
+      if (now - spawnFlashes[i].time > 400) spawnFlashes.splice(i, 1);
+    }
+  }
+
+  function drawSpawnFlashes(ctx, now) {
+    for (const sf of spawnFlashes) {
+      const age = (now - sf.time) / 400;
+      if (age > 1) continue;
+      const r = sf.r + age * 40;
+      ctx.globalAlpha = (1 - age) * 0.5;
+      ctx.strokeStyle = sf.color;
+      ctx.lineWidth = 2 * (1 - age);
+      glow(ctx, sf.color, 10);
+      ctx.beginPath();
+      ctx.arc(sf.x, sf.y, r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    noGlow(ctx);
+    ctx.globalAlpha = 1;
   }
 
   // ═══════════════════════════════════════
@@ -679,6 +1017,66 @@ const GameEngine = (() => {
       ctx.fillText(f.text, f.x, f.y);
     }
     noGlow(ctx);
+  }
+
+  // ═══════════════════════════════════════
+  //   WAVE BANNER
+  // ═══════════════════════════════════════
+  function showWaveBanner(text, sub) {
+    waveBanner = { text, sub, time: performance.now(), duration: 2000 };
+  }
+
+  function updateWaveBanner(now) {
+    if (waveBanner && now - waveBanner.time > waveBanner.duration) {
+      waveBanner = null;
+    }
+  }
+
+  function drawWaveBanner(ctx, now) {
+    if (!waveBanner) return;
+    const age = (now - waveBanner.time) / waveBanner.duration;
+    if (age > 1) return;
+
+    // Scale-in then fade out
+    let scale, alpha;
+    if (age < 0.15) {
+      // Scale in
+      const t = age / 0.15;
+      scale = 0.3 + t * 0.7;
+      alpha = t;
+    } else if (age > 0.7) {
+      // Fade out
+      const t = (age - 0.7) / 0.3;
+      scale = 1;
+      alpha = 1 - t;
+    } else {
+      scale = 1;
+      alpha = 1;
+    }
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(W / 2, H / 2 - 20);
+    ctx.scale(scale, scale);
+
+    // Main text
+    glow(ctx, NEON.blue, 30);
+    ctx.fillStyle = NEON.blue;
+    ctx.font = 'bold 48px "Orbitron", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(waveBanner.text, 0, 0);
+
+    // Sub text
+    if (waveBanner.sub) {
+      glow(ctx, NEON.pink, 15);
+      ctx.fillStyle = NEON.pink;
+      ctx.font = 'bold 20px "Orbitron", sans-serif';
+      ctx.fillText(waveBanner.sub, 0, 40);
+    }
+
+    noGlow(ctx);
+    ctx.restore();
   }
 
   // ═══════════════════════════════════════
@@ -730,6 +1128,44 @@ const GameEngine = (() => {
       ctx.fillRect(0, 0, W, H);
       flashAlpha *= 0.92;
       if (flashAlpha < 0.01) flashAlpha = 0;
+    }
+  }
+
+  // ── CRT Scanlines ──
+  function drawScanlines(ctx) {
+    ctx.globalAlpha = 0.04;
+    ctx.fillStyle = '#000000';
+    for (let y = 0; y < H; y += 3) {
+      ctx.fillRect(0, y, W, 1);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // ── Vignette ──
+  function drawVignette(ctx) {
+    const baseAlpha = 0.35 + vignetteBoost;
+    const gradient = ctx.createRadialGradient(W / 2, H / 2, W * 0.25, W / 2, H / 2, W * 0.75);
+    gradient.addColorStop(0, 'rgba(0,0,0,0)');
+    gradient.addColorStop(1, `rgba(0,0,0,${baseAlpha})`);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, W, H);
+
+    // Decay boost
+    if (vignetteBoost > 0) {
+      vignetteBoost *= 0.95;
+      if (vignetteBoost < 0.01) vignetteBoost = 0;
+    }
+  }
+
+  // ── Screen Pulse (combo flash) ──
+  function drawScreenPulse(ctx) {
+    if (screenPulse > 0) {
+      ctx.globalAlpha = screenPulse;
+      ctx.fillStyle = NEON.white;
+      ctx.fillRect(0, 0, W, H);
+      screenPulse *= 0.88;
+      if (screenPulse < 0.01) screenPulse = 0;
     }
   }
 
@@ -836,10 +1272,10 @@ const GameEngine = (() => {
       waveTimer = 0;
       spawnInterval = Math.max(CFG.spawnIntervalMin, spawnInterval * 0.85);
 
-      // Wave announcement
-      addFloatingText(W / 2, H / 2 - 30, `WAVE ${wave}`, NEON.blue);
-      addFloatingText(W / 2, H / 2 + 10, 'INCOMING!', NEON.pink);
+      // Wave announcement — large banner
+      showWaveBanner(`WAVE ${wave}`, 'INCOMING!');
       addShake(8);
+      SFX.waveStart();
 
       // Bonus spawn burst
       const burst = Math.min(wave + 2, 8);
@@ -855,6 +1291,7 @@ const GameEngine = (() => {
   function endGame() {
     active = false;
     cancelAnimationFrame(animFrame);
+    SFX.stopBGM();
 
     const isNew = score > highScore;
     if (isNew) {
@@ -900,6 +1337,9 @@ const GameEngine = (() => {
     updateFloatingTexts();
     updateShake();
     updateWaves(now, dt);
+    updateStars();
+    updateSpawnFlashes(now);
+    updateWaveBanner(now);
 
     // Clear
     _ctx.save();
@@ -914,15 +1354,21 @@ const GameEngine = (() => {
     _ctx.save();
     _ctx.translate(shake.x, shake.y);
 
-    // Draw
+    // Draw — layered back-to-front
+    drawStars(_ctx, now);
     drawGrid(_ctx, now);
+    drawSpawnFlashes(_ctx, now);
     drawPowerUps(_ctx, now);
     drawBullets(_ctx);
     drawEnemies(_ctx, now);
     drawPlayer(_ctx, now);
     drawParticles(_ctx);
     drawFloatingTexts(_ctx);
+    drawWaveBanner(_ctx, now);
     drawDamageFlash(_ctx);
+    drawScreenPulse(_ctx);
+    drawVignette(_ctx);
+    drawScanlines(_ctx);
     drawHUD(_ctx, now);
 
     _ctx.restore();
@@ -986,11 +1432,21 @@ const GameEngine = (() => {
     shake = { x: 0, y: 0, intensity: 0 };
     flashAlpha = 0;
     gridOffset = 0;
+    vignetteBoost = 0;
+    screenPulse = 0;
+    spawnFlashes = [];
+    waveBanner = null;
 
     player = createPlayer();
     targetX = player.x;
     targetY = player.y;
     touching = false;
+
+    // Initialize star field
+    initStars();
+
+    // Start BGM
+    SFX.startBGM();
 
     // Input
     _canvas.addEventListener('pointerdown', onPointerDown, { passive: false });
@@ -1002,10 +1458,10 @@ const GameEngine = (() => {
     resultOverlay = document.getElementById('game-result');
     if (resultOverlay) resultOverlay.classList.remove('visible');
 
-    // Wave 1 announcement
+    // Wave 1 announcement — big banner
     setTimeout(() => {
-      addFloatingText(W / 2, H / 2 - 30, 'WAVE 1', NEON.blue);
-      addFloatingText(W / 2, H / 2 + 10, 'SURVIVE!', NEON.pink);
+      showWaveBanner('WAVE 1', 'SURVIVE!');
+      SFX.waveStart();
     }, 300);
 
     // Initial enemy spawn
@@ -1024,6 +1480,9 @@ const GameEngine = (() => {
     particles = [];
     powerUps = [];
     floatingTexts = [];
+    spawnFlashes = [];
+    waveBanner = null;
+    SFX.stopBGM();
 
     if (_canvas) {
       _canvas.removeEventListener('pointerdown', onPointerDown);
