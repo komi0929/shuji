@@ -420,6 +420,8 @@ const GameEngine = (() => {
       if(rs)rs.textContent=score;if(rh)rh.textContent=highScore;if(rn)rn.style.display=isNew?'block':'none';if(rk)rk.textContent=kills;if(rw)rw.textContent=wave;
       ro.classList.add('visible');
     }
+    // Leaderboard: check if TOP 10 and show name input
+    if(typeof Leaderboard!=='undefined'){Leaderboard.onGameOver(score,wave,kills);}
   }
 
   // === MAIN LOOP ===

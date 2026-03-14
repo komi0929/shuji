@@ -92,8 +92,17 @@
         </div>
         <p class="cyber-new" id="result-new">★ NEW HI-SCORE ★</p>
         <p class="cyber-high">HI-SCORE: <span id="result-high">0</span></p>
+        <!-- Name Input for TOP 10 -->
+        <div id="lb-name-input-area">
+          <p class="lb-qualify">🎉 TOP 10 入り！名前を登録</p>
+          <div class="lb-input-row">
+            <input id="lb-name" type="text" maxlength="8" placeholder="なまえ（8文字以内）" autocomplete="off" />
+            <button id="lb-submit-btn" class="cyber-btn lb-submit">登録</button>
+          </div>
+        </div>
         <div class="result-buttons">
           <button id="game-replay" class="cyber-btn">RETRY</button>
+          <button id="game-ranking-btn" class="cyber-btn cyber-btn-rank">🏆 RANKING</button>
           <button id="game-exit" class="cyber-btn cyber-btn-exit">EXIT</button>
         </div>
       </div>
@@ -114,8 +123,28 @@
       <button id="idle-hint-close" aria-label="閉じる">✕</button>
     </div>
 
+    <!-- ══════ Leaderboard Panel ══════ -->
+    <div id="leaderboard-panel">
+      <div class="lb-inner">
+        <div class="lb-header">
+          <h2 class="lb-title">🏆 RANKING</h2>
+          <button id="lb-close" class="lb-close-btn">✕</button>
+        </div>
+        <div class="lb-tabs">
+          <button class="lb-tab active" data-tab="alltime">ALL TIME</button>
+          <button class="lb-tab" data-tab="today">TODAY</button>
+        </div>
+        <table class="lb-table">
+          <thead><tr><th></th><th>NAME</th><th>SCORE</th><th>WAVE</th><th>DATE</th></tr></thead>
+          <tbody id="lb-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <script src="brushes.js"></script>
     <script src="game.js"></script>
+    <script src="leaderboard.js"></script>
     <script src="app.js"></script>
     <script>
       if ('serviceWorker' in navigator) {
